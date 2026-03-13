@@ -2,46 +2,71 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = 'my-node-api'
+        DOCKERHUB_REPO = 'PlentyWahala/my-node-api'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out source code...'
                 checkout scm
             }
         }
 
         stage('Install dependencies') {
             steps {
-                echo 'Installing Node.js dependencies...'
                 sh 'npm ci'
             }
         }
 
         stage('Run tests') {
             steps {
-                echo 'Running tests...'
                 sh 'npm test'
             }
         }
 
         stage('Build Docker image') {
             steps {
-                echo 'Building Docker image...'
-                sh 'docker build -t ${IMAGE_NAME} .'
+                script {
+                    env.SHORT_SHA = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    env.BUILD_TAG_NAME = "build-${env.BUILD_NUMBER}"
+                    env.SHA_TAG_NAME = "sha-${env.SHORT_SHA}"
+
+                    sh """
+                        docker build -t ${DOCKERHUB_REPO}:${BUILD_TAG_NAME} .
+                        docker tag ${DOCKERHUB_REPO}:${BUILD_TAG_NAME} ${DOCKERHUB_REPO}:${SHA_TAG_NAME}
+                    """
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKERHUB_USERNAME',
+                    passwordVariable: 'DOCKERHUB_PASSWORD'
+                )]) {
+                    sh '''
+                        echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+                        docker push ${DOCKERHUB_REPO}:${BUILD_TAG_NAME}
+                        docker push ${DOCKERHUB_REPO}:${SHA_TAG_NAME}
+                        docker logout
+                    '''
+                }
             }
         }
     }
 
     post {
         success {
-            echo 'Pipeline completed successfully.'
+            echo "Pushed image tags: ${BUILD_TAG_NAME} and ${SHA_TAG_NAME}"
         }
         failure {
             echo 'Pipeline failed.'
         }
     }
 }
-
