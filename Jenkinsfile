@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_REPO = 'PlentyWahala/my-node-api'
+        DOCKERHUB_REPO = 'plentwWahala/my-node-api'
     }
 
     stages {
